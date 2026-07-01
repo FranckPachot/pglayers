@@ -87,6 +87,7 @@ promoted to stable.
 | [age](https://github.com/apache/age) | 1.7.0-rc0 | 17, 18 | Graph database with openCypher query language (Apache AGE) |
 | [anon](https://gitlab.com/dalibo/postgresql_anonymizer) | 3.1.1 | 17, 18 | Data anonymization and masking |
 | [credcheck](https://github.com/HexaCluster/credcheck) | 5.0 | 17, 18, 19 | Credential checks on user creation / password change |
+| [documentdb](https://github.com/documentdb/documentdb) | v0.113-0 | 17, 18 | MongoDB-compatible document database (BSON, queries, aggregation) |
 | [h3-pg](https://github.com/zachasme/h3-pg) | 4.2.3 | 17, 18 | Uber H3 hexagonal geospatial indexing |
 | [hll](https://github.com/citusdata/postgresql-hll) | 2.21 | 17, 18, 19 | HyperLogLog probabilistic distinct counting |
 | [http](https://github.com/pramsey/pgsql-http) | 1.7.1 | 17, 18, 19 | HTTP client for PostgreSQL (web requests from SQL) |
@@ -168,6 +169,7 @@ Extensions that need this:
 | age | `age` |
 | anon | `anon` |
 | credcheck | `credcheck` |
+| documentdb | `pg_documentdb_core`, `pg_documentdb`, `pg_documentdb_gw_host` |
 | pg_cron | `pg_cron` |
 | pg_duckdb | `pg_duckdb` |
 | pg_durable | `pg_durable` |
@@ -202,6 +204,62 @@ EOF
 
 This runs automatically on first container start (when the data directory
 is initialized).
+
+### DocumentDB
+
+DocumentDB requires its shared preload libraries to be listed in a
+specific order. The `pg_cron` library **must** appear before
+`pg_documentdb_core` in `shared_preload_libraries`:
+
+```dockerfile
+RUN echo "shared_preload_libraries = 'pg_cron,pg_documentdb_core,pg_documentdb,pg_documentdb_gw_host'" \
+    >> /usr/share/postgresql/postgresql.conf.sample
+```
+
+DocumentDB also depends on the `pg_cron` and `rum` extension layers at
+runtime. Include both when building your image:
+
+```dockerfile
+FROM postgres:17
+
+COPY --from=ghcr.io/pglayers/pgx-pg_cron:17      / /
+COPY --from=ghcr.io/pglayers/pgx-rum:17          / /
+COPY --from=ghcr.io/pglayers/pgx-documentdb:17   / /
+```
+
+For convenience, the `documentdb` profile bundles all required
+extensions together:
+
+```bash
+make image PROFILE=documentdb PG=17 REGISTRY=local
+```
+
+**MongoDB wire protocol:** The layer includes the DocumentDB gateway
+(`pg_documentdb_gw_host`), a PostgreSQL background worker that speaks
+the MongoDB wire protocol on port 10260. Connect with `mongosh` or any
+MongoDB driver:
+
+```bash
+mongosh "mongodb://user:password@localhost:10260/?tls=false"
+```
+
+Alternatively, use [FerretDB](https://github.com/FerretDB/FerretDB) as
+an external proxy if you prefer not to use the built-in gateway:
+
+```yaml
+# docker-compose.yml
+services:
+  postgres:
+    image: pglayers-documentdb:17   # or your custom image
+    environment:
+      POSTGRES_PASSWORD: secret
+  ferretdb:
+    image: ghcr.io/ferretdb/ferretdb:latest
+    ports:
+      - "27017:27017"
+    environment:
+      FERRETDB_POSTGRESQL_URL: postgres://postgres:secret@postgres:5432/postgres
+```
 
 ### PostGIS
 

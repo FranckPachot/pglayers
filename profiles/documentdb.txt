@@ -1,0 +1,5 @@
+# DocumentDB -- MongoDB-compatible document database on PostgreSQL.
+# Includes DocumentDB and its required dependencies (pg_cron, rum).
+documentdb
+pg_cron
+rum
